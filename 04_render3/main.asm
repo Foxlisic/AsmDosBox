@@ -8,7 +8,24 @@ include     "macro.asm"
             mov     es, ax
             call    draw2
 
+            mov     eax, [T1]
+            mov     [tri2], eax
+            mov     eax, [T1+4]
+            mov     [tri2+4], eax
+            mov     eax, [T1+8]
+            mov     [tri2+8], eax
+            mov     [CLRT], byte 13
+            call    draw2
+
+            xor     ax, ax
+            int     16h
+
             ret
+
+T1:         dw     80, 10
+            dw     60, 30
+            dw     100, 50
+
 
 ; Нарисовать треугольник 2D
 ; ------------------------------------------------------------------------------
@@ -38,7 +55,7 @@ draw2:
             sub3a   [BC.x], [_CX], [_BX]    ; BCx = C.x - B.x
             sub3a   [BC.y], [_CY], [_BY]    ; BCy = C.y - B.y
 
-            ; Проверить лицевую сторону грани
+            ; Проверить лицевую сторону грани (ошибка)
             mov     ax,  [AB.y]
             mul     word [AC.x]             ; ABy*ACx
             xchg    ax, bx
@@ -57,15 +74,15 @@ draw2:
             xor     ax, ax
             mov     [AC.dx], ax             ; AC.dx = 0
             mov     [AB.dx], ax             ; AB.dx = 0
-            cmp     [AC.y], ax              ; Чтобы не делить на AC.y и AB.y
-            jne     .R4
-            mov     [AC.y], word 1
-.R4:        inc     word [AB.y]
-.R5:
-brk
-            ; Перед рисованием линии: инкрементировать
+            mov     [.CHL], byte 2
+            inc     word [AB.y]
+            inc     word [BC.y]
+            inc     word [AC.y]             ; Рисуется Y3-Y1+1 строк
+
+.MAIN:      ; Перед рисованием линии: инкрементировать
             incr3   AC.dx, AC.x, AC.y, _AX  ; Сдвиг AC
             incr3   AB.dx, AB.x, AB.y, _BX  ; Сдвиг AB
+
 
             ; Рисование половины треугольника
             mov     di, [_AY]
@@ -95,21 +112,32 @@ brk
             inc     cx
 
             ; Растеризация
-            mov     al, 15
+            mov     al, [CLRT]
             rep     stosb
 
             ; Сдвиг точек вниз
 .K1:        inc     word [_AY]              ; A.y++
             dec     word [_BY]              ; B.y--
-            jns     .R5
-
-            ; Загрузка грани BC
-.K2:        ;
+            jns     .MAIN
+            dec     byte [.CHL]             ; Проверка что это рисуется BC
+            je      .END
+            mov     ax, [_CY]
+            dec     ax
+            js      .END                    ; Если C.y=B.y: выход
+            mov     [_BY], ax               ; Копировать BC.x, BC.y -> AB.x, AB.y
+            mov     eax, [BC]               ; AB.dx все равно равен 0
+            mov     [AB], eax               ; _BX указывает на точку B.x
+            incr3   AB.dx, AB.x, AB.y, _BX  ; Сдвиг AB (синхронизация)
+            jmp     .MAIN
 
 .END:       ret
+.CHL:       db      0                       ; Счетчик полутреугольника
 
 ; Секция с данными
 ; ------------------------------------------------------------------------------
+
+; Цвет треугольника
+CLRT:       db      14
 
 ; Грани треугольника
 AB:
@@ -125,10 +153,9 @@ AC:
 BC:
 .x:         dw      0
 .y:         dw      0
-.dx:        dw      0
 
-; Рисование 2D-треугольника по 3-м точкам
-tri2:       dw     60, 50           ; (x1 y1)
-            dw     80, 52           ; (x2 y2)
-            dw     20, 130          ; (x3 y3)
+; Рисование 2D-треугольника по 3-м точкам: временные данные
+tri2:       dw     60,  30          ; (x1 y1)
+            dw     100, 50          ; (x2 y2)
+            dw     20, 160          ; (x3 y3)
 
