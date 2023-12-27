@@ -19,19 +19,26 @@ include     "macro.asm"
 
             xor     ax, ax
             int     16h
-
             ret
 
 T1:         dw     80, 10
-            dw     60, 30
             dw     100, 50
-
+            dw     60, 30
 
 ; Нарисовать треугольник 2D
 ; ------------------------------------------------------------------------------
-draw2:
-            ; Отсортировать точки треугольника по Y (ASC)
+draw2:      ; Проверка лицевой стороны
             mov     si, tri2
+            call    .DIFAC
+            mov     ax,  [AB.y]
+            mul     word [AC.x]             ; ABy*ACx
+            xchg    ax, bx
+            mov     ax,  [AB.x]
+            mul     word [AC.y]             ; ABx*ACy
+            cmp     bx, ax
+            jg      .END                    ; if AB.y*AC.x > AB.x*AC.y: return
+
+            ; Отсортировать точки треугольника по Y (ASC)
 .R2:        lea     di, [si+4]
 .R1:        mov     ax, [si+2]              ; if tri2[si] > tri2[di]:
             cmp     ax, [di+2]
@@ -45,24 +52,12 @@ draw2:
             add     si, 4
             cmp     si, tri2+2*4
             jne     .R2
-            mov     si, tri2
 
-            ; Вычисление граней (AB, AC, BC)
-            sub3a   [AB.x], [_BX], [_AX]    ; ABx = B.x - A.x
-            sub3a   [AB.y], [_BY], [_AY]    ; ABy = B.y - A.y
-            sub3a   [AC.x], [_CX], [_AX]    ; ACx = C.x - A.x
-            sub3a   [AC.y], [_CY], [_AY]    ; ACy = C.y - A.y
+            ; Заново пересчитать грани
+            mov     si, tri2
+            call    .DIFAC
             sub3a   [BC.x], [_CX], [_BX]    ; BCx = C.x - B.x
             sub3a   [BC.y], [_CY], [_BY]    ; BCy = C.y - B.y
-
-            ; Проверить лицевую сторону грани (ошибка)
-            mov     ax,  [AB.y]
-            mul     word [AC.x]             ; ABy*ACx
-            xchg    ax, bx
-            mov     ax,  [AB.x]
-            mul     word [AC.y]             ; ABx*ACy
-            cmp     bx, ax
-            jg      .END                    ; if AB.y*AC.x > AB.x*AC.y: return
 
             ; Предзагрузка грани
             mov     ax, [_AX]
@@ -81,8 +76,7 @@ draw2:
 
 .MAIN:      ; Перед рисованием линии: инкрементировать
             incr3   AC.dx, AC.x, AC.y, _AX  ; Сдвиг AC
-            incr3   AB.dx, AB.x, AB.y, _BX  ; Сдвиг AB
-
+            call    .INCAB
 
             ; Рисование половины треугольника
             mov     di, [_AY]
@@ -127,12 +121,25 @@ draw2:
             mov     [_BY], ax               ; Копировать BC.x, BC.y -> AB.x, AB.y
             mov     eax, [BC]               ; AB.dx все равно равен 0
             mov     [AB], eax               ; _BX указывает на точку B.x
-            incr3   AB.dx, AB.x, AB.y, _BX  ; Сдвиг AB (синхронизация)
+            call    .INCAB                  ; Сдвиг AB (синхронизация)
             jmp     .MAIN
-
 .END:       ret
-.CHL:       db      0                       ; Счетчик полутреугольника
 
+; Расчет разностей точек
+.DIFAC:     sub3a   [AB.x], [_BX], [_AX]    ; ABx = B.x - A.x
+            sub3a   [AB.y], [_BY], [_AY]    ; ABy = B.y - A.y
+            sub3a   [AC.x], [_CX], [_AX]    ; ACx = C.x - A.x
+            sub3a   [AC.y], [_CY], [_AY]    ; ACy = C.y - A.y
+            ret
+
+; Инкремент AB или BC
+.INCAB:     incr3   AB.dx, AB.x, AB.y, _BX  ; Сдвиг AB
+            ret
+
+; Счетчик полутреугольника
+.CHL:       db      0
+
+; ------------------------------------------------------------------------------
 ; Секция с данными
 ; ------------------------------------------------------------------------------
 
